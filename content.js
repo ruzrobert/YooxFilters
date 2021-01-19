@@ -534,7 +534,10 @@ function getStringFromItemData(itemData, filterId){
 		return return_sizes.trim();
 	} else {
 	    itemDataString = ITEM_DATA_STRINGS[filterId];
-		return itemDataElement.find(itemDataString).find('.info-body')[0].innerText;
+		let foundItemProperty = itemDataElement.find(itemDataString);
+		if(foundItemProperty.length > 0) {
+			return foundItemProperty.find('.info-body')[0].innerText;
+		} else return "";
 	}
 }
 //endregion
