@@ -528,8 +528,11 @@ function getStringFromItemData(itemData, filterId){
 		product_sizes = size_js_plaintext.split("product_sizes");
 		return_sizes = "";
 		for(i = 2; i < product_sizes.length; i++) {
-			product_size = product_sizes[i].split("Text: ")[1].split("\"")[1];
-			return_sizes += product_size + " "
+			product_size_alternatives = product_sizes[i].split("Text: ")
+            for(j = 1; j < product_size_alternatives.length; j++) {
+                product_size = product_size_alternatives[j].split("\"")[1];
+                return_sizes += product_size + " "
+            }
 		}
 		return return_sizes.trim();
 	} else {
