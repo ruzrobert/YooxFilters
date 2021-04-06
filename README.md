@@ -1,12 +1,14 @@
 # YooxFilters
-Chrome free extension, that adds additional filters to the yoox.com
-
-This free extension is for yoox.com store website.
-It adds additional filters, which makes easier to search for products you are looking for.
+This is a Chrome extension for the yoox.com webshop.
+It adds additional filters, allowing you to search in a more fine-grained fashion.
 
 Available here: https://chrome.google.com/webstore/detail/yoox-additional-filters/lhopmgigaalaopcpmjhkaphihbgjdobl
 
 Features:
-- Filter items by Details
-- Filter items by Composition
-- Choose your filter setting - should item match all filters, or atleast one specified filter.
+- Filter items by details
+- Filter items by composition
+- Filter items by measurements
+- Filter items by size (Useful for very large or small sizes)
+- Two filter settings:
+    1) Match ALL filters
+    2) Match ANY filters

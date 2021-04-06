@@ -1,13 +1,22 @@
 // Modes
-const COMPOSITION_FILTER = 1001;
-const DETAILS_FILTER = 1002;
+const COMPOSITION_ID = "composition";
+const DETAILS_ID = "details";
+const MEASUREMENTS_ID = "measurements";
+const SIZE_ID = "size";
+const FILTER_IDS = [COMPOSITION_ID, DETAILS_ID, MEASUREMENTS_ID, SIZE_ID];
+const FILTER_LABEL_TEXT = {"composition": "Composition", "details": "Details", "measurements": "Measurements", "size": "Size"};
+
+const ITEM_DATA_STRINGS = {"composition": '#compositionInfo',
+						   "details": '#itemDescription',
+						   "measurements": "#measurementsInfo",
+	                       "size": null}; // Size is found by digging through javascript, not in html
 
 //region Extension Initialization
 var ExtensionSessionID = 0;
 var ExtensionTeleyooxElement = null;
 
 function restartExtension (teleyoox){
-	console.log('[YOOX ADD FILTERS] Restarting extension');
+	console.log('[YOOX ADD FILTER_CODES] Restarting extension');
 
 	StopPageFiltrator();
 	ExtensionSessionID += 1;
@@ -29,6 +38,7 @@ function loadTemplates (){
 	_loadTemplate('filterListTemplate.html');
 	_loadTemplate('activeFilterTemplate.html');
 }
+
 function _loadTemplate (name){
 	if (name in htmlTemplates && htmlTemplates[name].length > 0){
 		_loadTemplate_Ended(name);
@@ -41,6 +51,7 @@ function _loadTemplate (name){
 		});
 	}
 }
+
 function _loadTemplate_Ended (name){
 	loadedHtmlTemplatesCount++;
 
@@ -59,8 +70,7 @@ var additionalFiltersSection = null;
 var addFiltersSectionTitle = null;
 var addFiltersSectionContent = null;
 
-var detailsFilterInputField;
-var compositionFilterInputField;
+var inputFields = {};
 
 var compOperatorCheckbox_AND;
 var compOperatorCheckbox_OR;
@@ -79,15 +89,15 @@ function addFilterToTeleyoox() {
 
 	additionalFiltersSection = $($(teleyooxPosition).children('#teleyooxAdditionalFilters')[0]);
 
-	detailsFilterInputField = additionalFiltersSection.find('#detailsFilterInputField')[0];
-	compositionFilterInputField = additionalFiltersSection.find('#compositionFilterInputField')[0];
+    FILTER_IDS.forEach(key => {
+        inputFields[key] = additionalFiltersSection.find("#" + key + "FilterInputField")[0];
 
-	let applyDetailsFilterButton = additionalFiltersSection.find('#applyDetailsFilterButton');
-	let applyCompositionFilterButton = additionalFiltersSection.find('#applyCompositionFilterButton');
+        let uppercaseFilterId = key.charAt(0).toUpperCase() + key.slice(1);
+        let applyFilterButton = additionalFiltersSection.find("#apply" + uppercaseFilterId + "FilterButton");
+        applyFilterButton.click(_ => applyFilterButton_OnClick(key))
+    });
+
 	let clearAdditionalFiltersButton = additionalFiltersSection.find('#clearAdditionalFiltersButton');
-
-	applyDetailsFilterButton.click(applyDetailsFilterButton_OnClick);
-	applyCompositionFilterButton.click(applyCompositionFilterButton_OnClick);
 	clearAdditionalFiltersButton.click(clearAdditionalFiltersButton_OnClick);
 
 	compOperatorCheckbox_AND = additionalFiltersSection.find('.filterCheckboxButton')[0];
@@ -105,21 +115,17 @@ function addFilterToTeleyoox() {
 
 	addFiltersSectionContent = additionalFiltersSection.find('.addFiltersSectionContent');
 
-	chrome.storage.sync.get(['detailsFilters', 'compositionFilters', 'isFolded', 'compOperator'], function(storage){
+	chrome.storage.sync.get(FILTER_IDS.concat['isFolded', 'compOperator'], function(storage){
 		let anyFilter = false;
 
-		if ('detailsFilters' in storage) {
-			storage['detailsFilters'].forEach(function (item) {
-				addFilterElement(item, DETAILS_FILTER);
-				anyFilter = true;
-			});
-		}
-		if ('compositionFilters' in storage) {
-			storage['compositionFilters'].forEach(function (item) {
-				addFilterElement(item, COMPOSITION_FILTER);
-				anyFilter = true;
-			});
-		}
+        FILTER_IDS.forEach(filterStorageKey => {
+            if (filterStorageKey in storage) {
+			    storage[filterStorageKey].forEach(function (item) {
+				    addFilterElement(item, filterStorageKey.replace("Filters", ""));
+				    anyFilter = true;
+			    });
+            }
+        });
 		if ('isFolded' in storage && storage['isFolded'] === true){
 			foldSection();
 		}
@@ -136,24 +142,17 @@ function addFilterToTeleyoox() {
 	});
 }
 
-function applyDetailsFilterButton_OnClick (){
-	let filterValue = detailsFilterInputField.value.trim();
-	if (filterValue.length === 0) return;
+function applyFilterButton_OnClick(filterId){
+    inputField = inputFields[filterId];
+    let filterInput = inputField.value.trim();
+	if (filterInput.length === 0) return;
 
-	detailsFilterInputField.value = '';
-	addActiveFilter(filterValue, DETAILS_FILTER);
+	inputField.value = '';
+	addActiveFilter(filterInput, filterId);
 }
-function applyCompositionFilterButton_OnClick (){
-	let filterValue = compositionFilterInputField.value.trim();
-	if (filterValue.length === 0) return;
 
-	compositionFilterInputField.value = '';
-	addActiveFilter(filterValue, COMPOSITION_FILTER);
-}
-function clearAdditionalFiltersButton_OnClick (){
-	detailsFilterInputField.value = '';
-	compositionFilterInputField.value = '';
-
+function clearAdditionalFiltersButton_OnClick(){
+    Object.keys(inputFields).forEach(field => field.value = "");
 	removeAllActiveFilters();
 }
 
@@ -171,6 +170,7 @@ function addFiltersSectionTitle_OnClick (){
 
 	chrome.storage.sync.set({'isFolded': isFolded}, () => { });
 }
+
 function foldSection (){
 	const foldedClassName = 'addFiltersSectionTitle_Folded';
 	if (!addFiltersSectionTitle.classList.contains(foldedClassName)){
@@ -204,6 +204,7 @@ function compOperatorCheckbox_AND_OnClick (){
 	chrome.storage.sync.set({'compOperator': comparisonOperator}, function () { });
 	OnFiltersChanged();
 }
+
 function compOperatorCheckbox_OR_OnClick (){
 	if (comparisonOperator === 'OR') return;
 	else setComparisonOperator('OR');
@@ -214,86 +215,88 @@ function compOperatorCheckbox_OR_OnClick (){
 //endregion
 
 //region Active Filters
-var detailsActiveFilters = {};
-var compositionActiveFilters = {};
+var activeFilters = {};
+function clearActiveFilters(){
+    FILTER_IDS.forEach(filterId => activeFilters[filterId] = {});
+}
+clearActiveFilters();
 
-function addActiveFilter (filterValue, filterType){
-	if (filterType !== COMPOSITION_FILTER && filterType !== DETAILS_FILTER) return;
+function addActiveFilter (filterInput, filterId){
+	if (!FILTER_IDS.includes(filterId)) return;
 
-	let storageKey = filterType === DETAILS_FILTER ? 'detailsFilters' : 'compositionFilters';
-
-	chrome.storage.sync.get([storageKey], function (data){
-		if (!(storageKey in data)) data[storageKey] = [];
-		if (!data[storageKey].includes(filterValue)){
+	chrome.storage.sync.get([filterId], function (data){
+		if (!(filterId in data)) data[filterId] = [];
+		if (!data[filterId].includes(filterInput)){
 			// if filter is not added to the storage, add it there and save
-			data[storageKey].push(filterValue);
+			data[filterId].push(filterInput);
 
-			chrome.storage.sync.set({[storageKey]: data[storageKey]}, function (){
-				addFilterElement(filterValue, filterType);
+			chrome.storage.sync.set({[filterId]: data[filterId]}, function (){
+				addFilterElement(filterInput, filterId);
 				OnFiltersChanged();
 			});
 		}
 		else{
 			// filter is already added to the storage
-			addFilterElement(filterValue, filterType);
+			addFilterElement(filterInput, filterId);
 			OnFiltersChanged();
 		}
 	});
 }
-function removeActiveFilter (filterValue, filterType){
-	if (filterType !== COMPOSITION_FILTER && filterType !== DETAILS_FILTER) return;
 
-	let storageKey = filterType === DETAILS_FILTER ? 'detailsFilters' : 'compositionFilters';
-	let activeFilterList = filterType === DETAILS_FILTER ? detailsActiveFilters : compositionActiveFilters;
+function removeActiveFilter (filterInput, filterId){
+	if (!FILTER_IDS.includes(filterId)) return;
 
-	chrome.storage.sync.get([storageKey], function (data){
-		if (!(storageKey in data)) data[storageKey] = [];
-		if (data[storageKey].includes(filterValue)){
-			data[storageKey].splice(data[storageKey].indexOf(filterValue));
+	chrome.storage.sync.get([filterId], function (data){
+		if (!(filterId in data)) data[filterId] = [];
+		if (data[filterId].includes(filterInput)){
+			data[filterId].splice(data[filterId].indexOf(filterInput));
 
-			chrome.storage.sync.set({[storageKey]: data[storageKey]}, function () {
+			chrome.storage.sync.set({[filterId]: data[filterId]}, function () {
 				OnFiltersChanged();
 			});
 		}
 		else OnFiltersChanged();
 	});
 
-	removeFilterElement(filterValue, filterType);
+	removeFilterElement(filterInput, filterId);
 }
+
 function removeAllActiveFilters (){
-	chrome.storage.sync.set({'detailsFilters': [], 'compositionFilters': []}, function () {
+    var emptyFilters = {};
+    FILTER_IDS.forEach(key => emptyFilters[key] = []);
+	chrome.storage.sync.set(emptyFilters, function () {
 		OnFiltersChanged();
 	});
 
 	removeAllFilterElements();
 }
 
-function addFilterElement (filterValue, filterType){
-	let activeFilterList = filterType === DETAILS_FILTER ? detailsActiveFilters : compositionActiveFilters;
-	if (filterValue in activeFilterList) return; // already added
+function addFilterElement (filterInput, filterId){
+	let activeFilterList = activeFilters[filterId];
+	if (filterInput in activeFilterList) return; // already added
 
-	let filterText = filterValue;
-	if (filterType === COMPOSITION_FILTER) filterText = 'C: ' + filterText;
-	else if (filterType === DETAILS_FILTER) filterText = 'D: ' + filterText;
+	let filterText = FILTER_LABEL_TEXT[filterId] + ": " + filterInput;
 
 	let templateCopy = $(htmlTemplates['activeFilterTemplate.html']);
 	activeFiltersList.children('ul').insertAt(0, templateCopy);
 	templateCopy.find('.active-filter-value')[0].innerText = filterText;
 	templateCopy.click(function () {
-		activeFilter_OnClick(filterValue, filterType);
+		activeFilter_OnClick(filterInput, filterId);
 	});
 
-	activeFilterList[filterValue] = templateCopy;
+	activeFilterList[filterInput] = templateCopy;
 
 	setActiveFilterInfoAsFirstSibling();
 }
-function removeFilterElement (filterValue, filterType){
-	let activeFilterList = filterType === DETAILS_FILTER ? detailsActiveFilters : compositionActiveFilters;
-	if (!filterValue in activeFilterList) return;
 
-	activeFilterList[filterValue].remove();
-	delete activeFilterList[filterValue];
+function removeFilterElement (filterInput, filterId){
+	let activeFilterList = activeFilters[filterId];
+	if (!filterInput in activeFilterList) return;
+
+	activeFilterList[filterInput].remove();
+	delete activeFilterList[filterInput];
 }
+
 function removeAllFilterElements (){
 	if (activeFiltersList !== null){
 		activeFiltersList.find('.customActiveFilterItem').remove();
@@ -302,12 +305,11 @@ function removeAllFilterElements (){
 		}
 	}
 
-	detailsActiveFilters = {};
-	compositionActiveFilters = {};
+    clearActiveFilters();
 }
 
-function activeFilter_OnClick (filterValue, filterType){
-	removeActiveFilter(filterValue, filterType);
+function activeFilter_OnClick (filterInput, filterId){
+	removeActiveFilter(filterInput, filterId);
 }
 
 var activeFiltersList = null;
@@ -327,13 +329,16 @@ function addActiveFilterInfoElement (){
 	templateCopy.children('a').css('pointer-events', 'none');
 	templateCopy.find('.active-filter-x').remove();
 }
+
 function showActiveFilterInfoElement (){
 	activeFilterInfoElement.css('display', '');
 	setActiveFilterInfoAsFirstSibling();
 }
+
 function hideActiveFilterInfoElement (){
 	activeFilterInfoElement.css('display', 'none');
 }
+
 function setTextToActiveFilterInfoElement (text){
 	activeFilterInfoElementValueElement.innerText = text;
 	setActiveFilterInfoAsFirstSibling();
@@ -343,6 +348,7 @@ function setActiveFilterInfoAsFirstSibling (){
 		activeFiltersList.prepend(activeFilterInfoElement);
 	}
 }
+
 //endregion
 
 //region Filtrator
@@ -361,6 +367,7 @@ const FILTRATOR_MAX_PARALLEL = 10;
 function StopPageFiltrator (){
 	isFiltratorStarted = false;
 }
+
 function StartPageFiltrator (){
 	if (isFiltratorStarted) return;
 	else {
@@ -370,17 +377,18 @@ function StartPageFiltrator (){
 	showActiveFilterInfoElement();
 	loadDataForEachPageItem();
 }
+
 function OnFiltersChanged (){
-	chrome.storage.sync.get(['detailsFilters', 'compositionFilters'], function(storage){
+	chrome.storage.sync.get(FILTER_IDS, function(storage){
 		let anyFilter = false;
 
-		if (!('detailsFilters' in storage)) storage['detailsFilters'] = [];
-		if (!('compositionFilters' in storage)) storage['compositionFilters'] = [];
-
-		let detailsFilters = storage['detailsFilters'];
-		let compositionFilters = storage['compositionFilters'];
-		if (detailsFilters.length > 0) anyFilter = true;
-		if (compositionFilters.length > 0) anyFilter = true;
+        allFilters = {}
+        FILTER_IDS.forEach(filterId => {
+            if (!(filterId in storage)) storage[filterId] = [];
+            let filters = storage[filterId];
+            allFilters[filterId] = filters;
+            if (filters.length > 0) anyFilter = true;
+        })
 
 		if (anyFilter){
 			StartPageFiltrator();
@@ -390,7 +398,7 @@ function OnFiltersChanged (){
 			let visibleItemCount = 0;
 			for (let i = pageItems.length - 1; i >= 0; i--) {
 				let item = pageItems[i];
-				let isVisible = checkPageItemWithFilters(item, i, detailsFilters, compositionFilters);
+				let isVisible = checkPageItemWithFilters(item, i, allFilters);
 				setPageItemVisible(item, isVisible);
 
 				if (isVisible) visibleItemCount++;
@@ -442,6 +450,7 @@ function onPageDataLoadCompleted (index, sessionID){
 		setTextToActiveFilterInfoElement('Loaded ' + filtratorLoadedIndexes + ' / ' + pageItems.length);
 	}
 }
+
 function onAllPageDataLoaded (){
 	// apply filters to page items
 	setTextToActiveFilterInfoElement('All items loaded');
@@ -464,10 +473,9 @@ function loadOnePageData (index, sessionID){
 		url: itemUrl,
 		success: function (data) {
 			if (ExtensionSessionID === sessionID) {
-				let detailsStr = getDetailsStringFromItemData(data);
-				let compositionStr = getCompositionStringFromItemData(data);
-
-				filtratorItemsData[index] = {'details': detailsStr, 'composition': compositionStr};
+				let itemStrings = {}
+				FILTER_IDS.forEach(filterId => itemStrings[filterId] = getStringFromItemData(data, filterId));
+				filtratorItemsData[index] = itemStrings;
 				//console.log('Saved for index ' + index + '. Data: ' + JSON.stringify(filtratorItemsData[index]));
 			}
 		},
@@ -480,44 +488,27 @@ function loadOnePageData (index, sessionID){
 	});
 }
 
-function checkPageItemWithFilters (pageItem, index, detailsFilters, compositionFilters){
+function checkPageItemWithFilters (pageItem, index, allFilters){
 	if (!(index in filtratorItemsData)) return false;
 
 	let itemData = filtratorItemsData[index];
-	let itemDetails = itemData['details'].toLowerCase();
-	let itemComposition = itemData['composition'].toLowerCase();
+	FILTER_IDS.forEach(filterId => itemData[filterId] = itemData[filterId].toLowerCase());
 
-	if (comparisonOperator === 'AND') { // AND
-		for (let i = 0; i < detailsFilters.length; i++) {
-			let filter = detailsFilters[i].trim().toLowerCase();
-			if (filter.length > 0 && !itemDetails.includes(filter)) {
-				return false;
-			}
-		}
-		for (let i = 0; i < compositionFilters.length; i++) {
-			let filter = compositionFilters[i].trim();
-			if (filter.length > 0 && !itemComposition.includes(filter)) {
-				return false;
-			}
-		}
+    filterMatches = Object.keys(allFilters).map(filterId => {
+        filters = allFilters[filterId];
+        singleFilterMatches = filters.map(filter => {
+            let trimmedFilter = filter.trim().toLowerCase();
+			return !(trimmedFilter.length > 0 && !itemData[filterId].includes(trimmedFilter));
+		});
+		return singleFilterMatches;
+    });
 
-		return true;
-	}
-	else{ // OR
-		for (let i = 0; i < detailsFilters.length; i++) {
-			let filter = detailsFilters[i].trim().toLowerCase();
-			if (filter.length > 0 && itemDetails.includes(filter)) {
-				return true;
-			}
-		}
-		for (let i = 0; i < compositionFilters.length; i++) {
-			let filter = compositionFilters[i].trim();
-			if (filter.length > 0 && itemComposition.includes(filter)) {
-				return true;
-			}
-		}
-
-		return false;
+	if (comparisonOperator === 'AND') {
+	    allMatches = filterMatches.map(matches => matches.every(x => x));
+	    return allMatches.every(x => x);
+	} else { // OR
+	    allMatches = filterMatches.map(matches => matches.some(x => x));
+	    return allMatches.some(x => x);
 	}
 }
 
@@ -528,17 +519,29 @@ function setPageItemVisible (pageItem, isVisible){
 function getItemUrl (item){
 	return $(item).find('.itemlink').attr('href');
 }
-function getDetailsStringFromItemData (itemData){
-	var ownerDocument = document.implementation.createHTMLDocument('virtual');
-	let itemDataElement = $(itemData, ownerDocument);
 
-	return itemDataElement.find('#itemDescription').find('.info-body')[0].innerText;
-}
-function getCompositionStringFromItemData (itemData){
-	var ownerDocument = document.implementation.createHTMLDocument('virtual');
+function getStringFromItemData(itemData, filterId){
+    var ownerDocument = document.implementation.createHTMLDocument('virtual');
 	let itemDataElement = $(itemData, ownerDocument);
-
-	return itemDataElement.find('#compositionInfo').find('.info-body')[0].innerText;
+	if(filterId === SIZE_ID) {
+		size_js_plaintext = itemDataElement.find("script:contains('tc_vars')")[0].outerHTML;
+		product_sizes = size_js_plaintext.split("product_sizes");
+		return_sizes = "";
+		for(i = 2; i < product_sizes.length; i++) {
+			product_size_alternatives = product_sizes[i].split("Text: ")
+            for(j = 1; j < product_size_alternatives.length; j++) {
+                product_size = product_size_alternatives[j].split("\"")[1];
+                return_sizes += product_size + " "
+            }
+		}
+		return return_sizes.trim();
+	} else {
+	    itemDataString = ITEM_DATA_STRINGS[filterId];
+		let foundItemProperty = itemDataElement.find(itemDataString);
+		if(foundItemProperty.length > 0) {
+			return foundItemProperty.find('.info-body')[0].innerText;
+		} else return "";
+	}
 }
 //endregion
 
